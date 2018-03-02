@@ -1,6 +1,8 @@
 // Alessandro Casalino
 //
-// Compile with gcc-7 -O2 q1.c -o q1.exe
+// Compile with gcc-7 -O2 mimetic_evolve.c -o mimetic_evolve.exe
+// Run with ./mimetic_evolve.exe
+//
 //
 // NOTE: The scale factor is defined as F, and the derivative of the scale factor as A
 // NOTE: Units of measurement with 16 \pi G = 1, as in the paper
