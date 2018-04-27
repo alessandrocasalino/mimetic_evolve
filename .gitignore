@@ -1,4 +1,5 @@
 *.exe
 *.ipynb
 *.pdf
+*.png
 *.csv

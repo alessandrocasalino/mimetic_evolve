@@ -17,9 +17,9 @@
 // PHYSICAL PARAMETERS VALUES
 
 // Action parameters
-double a=0.05;
+double a=0.0;
 double b=0.0;
-double c=0.5;
+double c=0.0;
 
 // INITIAL CONDITIONS
 // Initial value of the scale factor
@@ -67,7 +67,7 @@ double rhof_init_max = 1e16; //1e16 max for LCDM (model 1)
 
 
 // TEST MODE
-// Provides some informations on the terminal during the computation (1: on, others: off)
+// Provides some informations on the terminal and the .csv file during the computation (1: on, others: off)
 int TEST_MODE = 0;
 
 // DEFINITION OF THE SYSTEM OF ODE
@@ -143,7 +143,9 @@ void csv(double * t, double * F, double * A, double * rhof, double * rhor, doubl
 
     FILE *fp;
     fp = fopen (filename, "w+");
-    fprintf(fp, "%s,%s,%s,%s,%s,%s,%s,%s\n", "t [Gyr]", "a(t)", "H(t) [Km/s/Mpc]", "Omega_df", "Omega_r", "Omega_b", "H_check [Km/s/Mpc]", "omega_df");
+    fprintf(fp, "%s,%s,%s,%s,%s,%s,%s", "t [Gyr]", "a(t)", "H(t) [Km/s/Mpc]", "H_prime(t) [Km/s/Mpc]", "Omega_df", "Omega_r", "Omega_b", "omega_df");
+    if(TEST_MODE==1) fprintf(fp, ",%s", "H_check [Km/s/Mpc]");
+    fprintf(fp, "\n");
 
     double MPl = (4.-b+3.*c-4.*a)/4.;
 
@@ -154,7 +156,10 @@ void csv(double * t, double * F, double * A, double * rhof, double * rhor, doubl
 
         double H_c = A[i]/F[i];
         double H = sqrt(1./MPl)*sqrt(rhor[i]/6.+rhof[i]/6.+rhob[i]/6.);
-        fprintf(fp, "%e,%e,%e,%e,%e,%e,%e,%e\n", t[i]*tcf, F[i], H * _H0_, rhof[i]/MPl/H/H/6., rhor[i]/MPl/H/H/6., rhob[i]/MPl/H/H/6., H_c * _H0_, -V(t[i])/rhof[i]);
+        double H_prime = 1./MPl /4. * ( - 6. * H * H - 1./3. * rhor[i] + V(t[i]));
+        fprintf(fp, "%e,%e,%e,%e,%e,%e,%e", t[i]*tcf, F[i], H * _H0_, H_prime * _H0_, rhof[i]/MPl/H/H/6., rhor[i]/MPl/H/H/6., rhob[i]/MPl/H/H/6., -V(t[i])/rhof[i]);
+        if(TEST_MODE==1) fprintf(fp, ",%e", H_c * _H0_);
+        fprintf(fp, "\n");
 
         if(F[i+csv_resolution]<= 1.0){
           i=i+csv_resolution;
@@ -313,18 +318,16 @@ double bisection (double min, double max, double * t, double * F, double * A, do
 
     C=(max+min)/2.;
 
-    if (TEST_MODE == 1) {
-      printf(" min: %e , max: %e, C: %e, rk4_min: %e , rk4_C: %e \n", min, max, C, rk4_min, rk4_C);
-    }
+    if (TEST_MODE == 1) printf("TEST_MODE ON - min: %e , max: %e, C: %e, rk4_min: %e , rk4_C: %e \n", min, max, C, rk4_min, rk4_C);
 
   }
 
   double result = (max+min)/2.;
 
+  if(TEST_MODE==1) printf("\n");
   printf("\t-> Result of bisection method is rho_df: %e (internal units).\n", result);
-  if(TEST_MODE==1){
-    printf("\t--> Confront with LCDM value: %e (internal units).\n", 6. * OmegaLambda_0 + 6. * OmegaCDM_0 / pow(F_init,3.));
-  }
+  if(TEST_MODE==1) printf("\t--> Confront with LCDM value: %e (internal units).\n", 6. * OmegaLambda_0 + 6. * OmegaCDM_0 / pow(F_init,3.));
+
   return result;
 
 }
@@ -359,7 +362,7 @@ int main() {
         rhob[0] = rhob_init;
 
         if(model!=0){
-          printf(" Searching for best initial value for the dark fluid ...\n");
+          printf(" Searching for best initial value for the dark fluid ...\n \n");
           rhof[0] = bisection (rhof_init_min, rhof_init_max, t, F, A, rhof, rhor, rhob, a, b, c, OmegaDf_0);
           A[0] = F_init * sqrt(1./MPl) * sqrt(rhor_init/6.+rhof[0]/6.+rhob_init/6.);
         }
@@ -388,6 +391,8 @@ int main() {
         csv(t, F, A, rhof, rhor, rhob, a, b, c, filename);
 
         printf("\n The results are saved in '.csv' files. The name is labelled with the value of c, and the model (m).\n");
+
+        if(TEST_MODE==1) printf("\n TEST_MODE ON: check the values of H in .csv file. They must be equal!");
 
         printf("\n\t\t----------------------------------------\n");
 
