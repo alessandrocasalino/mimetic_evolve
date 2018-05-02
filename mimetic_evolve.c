@@ -1,11 +1,16 @@
 // Alessandro Casalino
 //
+// Paper with equations: arXiv:1803.02620
+//
 // Compile with gcc-7 -O2 mimetic_evolve.c -o mimetic_evolve.exe
 // Run with ./mimetic_evolve.exe
 //
 //
 // NOTE: The scale factor is defined as F, and the derivative of the scale factor as A
 // NOTE: Units of measurement with 16 \pi G = 1, as in the paper
+//
+// NOTE: inline use for functions
+// Speed up computation but need to compile gcc-7 (Homebrew on macOS), or alternatively use -O2 with clang (might fail to compile though)
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,7 +49,7 @@ double _H0_ = 67.74;                      // H0 of LCDM in Km/s/Mpc
 //  2: QUINTESSENCE (i.e. 1/\phi^2 potential)
 //  3: PHANTOM
 int model = 1;
-// Potential constants (makes something only for model>=1)
+// Potential constants (makes something only for model>1)
 double V_const = 2e3;
 double ts = 1e10;
 
@@ -66,16 +71,13 @@ double rhof_init_min = 1e-10;
 double rhof_init_max = 1e16; //1e16 max for LCDM (model 1)
 
 
+// PERTURBATION FACTOR COMPUTATION
+// Provides the factor of \delta\phi of equation (22) (arXiv:1803.02620) as output in .csv file
+int PERT_FACT_MODE = 1;
+
 // TEST MODE
 // Provides some informations on the terminal and the .csv file during the computation (1: on, others: off)
 int TEST_MODE = 0;
-
-// DEFINITION OF THE SYSTEM OF ODE
-// Note: I have not considered the explicit time dependence in the definitions of function arguments
-//       In general, the time dependence must be considere defining D1 as D1(double t, double theta, double phi, double D)
-
-// Note inline use for functions
-// Speed up computation but need to compile gcc-7 (Homebrew on macOS), or alternatively use -O2 with clang (might fail to compile though)
 
 
 // Definition of the POTENTIAL as function of t (remember t = \phi due to mimetic constraint)
@@ -98,6 +100,13 @@ inline double V(double t) {
   }
 
   return result;
+
+}
+
+// Definition of the velocity of scalar perturbations
+inline double cs2(double a, double b, double c){
+
+  return 2.*(b-c)*(a-1.)/(2.*a-b-2.)/(4.-4.*a-b+3.*c);
 
 }
 
@@ -143,30 +152,50 @@ void csv(double * t, double * F, double * A, double * rhof, double * rhor, doubl
 
     FILE *fp;
     fp = fopen (filename, "w+");
-    fprintf(fp, "%s,%s,%s,%s,%s,%s,%s", "t [Gyr]", "a(t)", "H(t) [Km/s/Mpc]", "H_prime(t) [Km/s/Mpc]", "Omega_df", "Omega_r", "Omega_b", "omega_df");
+    fprintf(fp, "%s,%s,%s,%s,%s,%s,%s,%s", "t [Gyr]", "a(t)", "H(t) [Km/s/Mpc]", "H_prime(t) [(Km/s/Mpc)^2]", "Omega_df", "Omega_r", "Omega_b", "omega_df");
+    if(PERT_FACT_MODE==1) fprintf(fp, ",%s", "Pert. factor [Km^2/s^2/Mpc^2]");
     if(TEST_MODE==1) fprintf(fp, ",%s", "H_check [Km/s/Mpc]");
     fprintf(fp, "\n");
 
     double MPl = (4.-b+3.*c-4.*a)/4.;
+    double CS2 = cs2(a,b,c);
+    double k_H0 = 1.;
+    double H_c = 0.,pert_factor = 0.;
 
     // Time conversion factor
     double tcf = 1./_H0_/(60.*60.*24.*365.*1e9)*_MPc_over_m_/1000.;
 
     while( F[i] <= 1.0){
 
-        double H_c = A[i]/F[i];
-        double H = sqrt(1./MPl)*sqrt(rhor[i]/6.+rhof[i]/6.+rhob[i]/6.);
-        double H_prime = 1./MPl /4. * ( - 6. * H * H - 1./3. * rhor[i] + V(t[i]));
-        fprintf(fp, "%e,%e,%e,%e,%e,%e,%e", t[i]*tcf, F[i], H * _H0_, H_prime * _H0_, rhof[i]/MPl/H/H/6., rhor[i]/MPl/H/H/6., rhob[i]/MPl/H/H/6., -V(t[i])/rhof[i]);
-        if(TEST_MODE==1) fprintf(fp, ",%e", H_c * _H0_);
-        fprintf(fp, "\n");
+      double H = sqrt(1./MPl)*sqrt(rhor[i]/6.+rhof[i]/6.+rhob[i]/6.);
+      double H_prime = - 3./2. * H * H - rhor[i]/MPl/3./4. + V(t[i])/MPl/4.;
 
-        if(F[i+csv_resolution]<= 1.0){
-          i=i+csv_resolution;
-        }
-        else{
-          i++;
-        }
+      fprintf(fp, "%e,%e,%e,%e,%e,%e,%e,%e", t[i] * tcf, F[i], H * _H0_, H_prime * _H0_ * _H0_, rhof[i]/MPl/H/H/6., rhor[i]/MPl/H/H/6., rhob[i]/MPl/H/H/6., -V(t[i])/rhof[i]);
+
+      if(PERT_FACT_MODE==1){
+
+        pert_factor = H_prime * _H0_ * _H0_ + 2.*(a-1.)/(2.*a-b-2.)/(4.-4.*a-b+3.*c)*(4./3.*rhor[i]+rhob[i]) * _H0_ * _H0_ + k_H0 * k_H0 * CS2/F[i]/F[i];
+
+        fprintf(fp, ",%e", pert_factor);
+
+      }
+
+      if(TEST_MODE==1){
+
+        H_c = A[i]/F[i];
+
+        fprintf(fp, ",%e", H_c * _H0_);
+
+      }
+
+      fprintf(fp, "\n");
+
+      if(F[i+csv_resolution]<= 1.0){
+        i=i+csv_resolution;
+      }
+      else{
+        i++;
+      }
 
     }
 
@@ -334,7 +363,6 @@ double bisection (double min, double max, double * t, double * F, double * A, do
 
 int main() {
 
-    // TODO: implement bisection method for initial density of dark fluid
     double rhor_init = 6. * OmegaR_0/pow(F_init,4.);
     double rhob_init = 6. * OmegaB_0/pow(F_init,3.);
 
@@ -387,6 +415,7 @@ int main() {
         printf("\n RESULTS:\n");
         printf("\t-> H0: %f km/s/Mpc\n", A[last_int]/F[last_int] * _H0_);
         printf("\t-> Age of the Universe: %f Gyr\n", t[last_int] /_H0_/(60.*60.*24.*365.*1e9)*_MPc_over_m_/1000.);
+        printf("\t-> Velocity fo scalar perturbations (cs2): %f \n", cs2(a,b,c));
 
         csv(t, F, A, rhof, rhor, rhob, a, b, c, filename);
 
